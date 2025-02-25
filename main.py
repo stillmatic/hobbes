@@ -1,3 +1,4 @@
+import tempfile
 from pyboy import PyBoy
 import pygame
 import time
@@ -117,24 +118,24 @@ def get_ai_response(pyboy, conversation_history):
     Get AI response for the current game state.
     Returns updated conversation history and any commands to execute.
     """
+    print("Getting AI response")   
     try:
         # Capture current screen
-        screenshot = pyboy.screen_image()
-        buffered = BytesIO()
-        screenshot.save(buffered, format="PNG")
-        base64_image = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        screenshot = pyboy.screen.image
+        print("Screenshot captured")
+        with tempfile.NamedTemporaryFile(suffix=".png") as temp_file:
+            screenshot.save(temp_file.name)
+            base64_image = base64.b64encode(open(temp_file.name, "rb").read()).decode("utf-8")
         
         # Add user message with screenshot to conversation history
         conversation_history.append({
             "role": "user",
-            "content": "This is the current state of the game, what should the next move be?",
+            "content": [
+                {"type": "text", "text": "This is the current state of the game, what should the next move be?"},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{base64_image}", "detail": "low"}},
+            ]
         })
-        
-        conversation_history.append({
-            "type": "image_url",
-            "image_url": {"url": f"data:image/png;base64,{base64_image}", "detail": "low"},
-        })
-        
+        print("Conversation history updated")
         # Get AI response
         completion = client.chat.completions.create(
             extra_headers={
@@ -145,6 +146,7 @@ def get_ai_response(pyboy, conversation_history):
             messages=conversation_history,
         )
         
+        print(completion)
         # Parse AI response
         ai_response = completion.choices[0].message.content
         
@@ -400,7 +402,7 @@ def run_emulator_loop(pyboy, rom_path, debug_mode, unlimited_fps_mode, agent_mod
                 # Take a screenshot every second in debug mode to help the agent
                 if pyboy.frame_count > 0:
                     screenshot_path = "current_frame.png"
-                    pyboy.screen_image().save(screenshot_path)
+                    pyboy.screen.image.save(screenshot_path)
 
 
 def main(
