@@ -1,4 +1,5 @@
 .env
+.hermit/
 roms/
 
 # Python-generated files
