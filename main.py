@@ -10,6 +10,7 @@ import os
 import base64
 from io import BytesIO
 import re
+import traceback
 
 
 load_dotenv()
@@ -109,6 +110,76 @@ def process_agent_command(command, pyboy, rom_path, debug_mode, unlimited_fps_mo
         print(f"Unknown command: {main_command}")
 
     return debug_mode, unlimited_fps_mode, False
+
+
+def get_ai_response(pyboy, conversation_history):
+    """
+    Get AI response for the current game state.
+    Returns updated conversation history and any commands to execute.
+    """
+    try:
+        # Capture current screen
+        screenshot = pyboy.screen_image()
+        buffered = BytesIO()
+        screenshot.save(buffered, format="PNG")
+        base64_image = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        
+        # Add user message with screenshot to conversation history
+        conversation_history.append({
+            "role": "user",
+            "content": "This is the current state of the game, what should the next move be?",
+        })
+        
+        conversation_history.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:image/png;base64,{base64_image}", "detail": "low"},
+        })
+        
+        # Get AI response
+        completion = client.chat.completions.create(
+            extra_headers={
+                "HTTP-Referer": "twitch.tv/memberoftechstaff", 
+                "X-Title": "Member of Technical Staff",
+            },
+            model="openai/gpt-4o",
+            messages=conversation_history,
+        )
+        
+        # Parse AI response
+        ai_response = completion.choices[0].message.content
+        
+        # Add AI response to conversation history
+        conversation_history.append({
+            "role": "assistant",
+            "content": ai_response
+        })
+        
+        # Extract thinking and commands
+        thinking = ""
+        commands = []
+        
+        thinking_match = re.search(r'<thinking>(.*?)</thinking>', ai_response, re.DOTALL)
+        commands_match = re.search(r'<commands>(.*?)</commands>', ai_response, re.DOTALL)
+        
+        if thinking_match:
+            thinking = thinking_match.group(1).strip()
+            print("\nAI Thinking:")
+            print(thinking)
+        
+        if commands_match:
+            commands_text = commands_match.group(1).strip()
+            commands = [cmd.strip() for cmd in commands_text.split('\n') if cmd.strip()]
+            print("\nAI Commands:")
+            for cmd in commands:
+                print(f"- {cmd}")
+        
+        return conversation_history, commands
+        
+    except Exception as e:
+        print(f"Error getting AI response: {str(e)}")
+        print("Stack trace:")
+        traceback.print_exc()
+        return conversation_history, []
 
 
 def run_emulator_loop(pyboy, rom_path, debug_mode, unlimited_fps_mode, agent_mode=True):
@@ -284,75 +355,25 @@ def run_emulator_loop(pyboy, rom_path, debug_mode, unlimited_fps_mode, agent_mod
                     
                     # Special command to trigger AI
                     if command.lower() == "ai":
-                        # Capture current screen
-                        screenshot = pyboy.screen.image
-                        buffered = BytesIO()
-                        screenshot.save(buffered, format="PNG")
-                        base64_image = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                        
-                        # Add user message with screenshot to conversation history
-                        conversation_history.append({
-                            "role": "user",
-                            "content": "This is the current state of the game, what should the next move be?",
-                        })
-                        
-                        conversation_history.append({
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/png;base64,{base64_image}", "detail": "low"},
-                        })
-                        
-                        # Get AI response
                         try:
-                            completion = client.chat.completions.create(
-                                extra_headers={
-                                    "HTTP-Referer": "twitch.tv/memberoftechstaff", 
-                                    "X-Title": "Member of Technical Staff",
-                                },
-                                model="openai/gpt-4o",
-                                messages=conversation_history,
-                            )
+                            # Get AI response and execute commands
+                            conversation_history, commands = get_ai_response(pyboy, conversation_history)
                             
-                            # Parse AI response
-                            ai_response = completion.choices[0].message.content
-                            
-                            # Add AI response to conversation history
-                            conversation_history.append({
-                                "role": "assistant",
-                                "content": ai_response
-                            })
-                            
-                            # Extract thinking and commands
-                            thinking = ""
-                            commands = []
-                            
-                            thinking_match = re.search(r'<thinking>(.*?)</thinking>', ai_response, re.DOTALL)
-                            commands_match = re.search(r'<commands>(.*?)</commands>', ai_response, re.DOTALL)
-                            
-                            if thinking_match:
-                                thinking = thinking_match.group(1).strip()
-                                print("\nAI Thinking:")
-                                print(thinking)
-                            
-                            if commands_match:
-                                commands_text = commands_match.group(1).strip()
-                                commands = [cmd.strip() for cmd in commands_text.split('\n') if cmd.strip()]
-                                print("\nAI Commands:")
-                                for cmd in commands:
-                                    print(f"- {cmd}")
+                            # Execute each command
+                            for cmd in commands:
+                                debug_mode, unlimited_fps_mode, quit_requested = process_agent_command(
+                                    cmd, pyboy, rom_path, debug_mode, unlimited_fps_mode
+                                )
+                                if quit_requested:
+                                    running = False
+                                    break
+                                # Add a small delay between commands
+                                time.sleep(0.2)
                                 
-                                # Execute each command
-                                for cmd in commands:
-                                    debug_mode, unlimited_fps_mode, quit_requested = process_agent_command(
-                                        cmd, pyboy, rom_path, debug_mode, unlimited_fps_mode
-                                    )
-                                    if quit_requested:
-                                        running = False
-                                        break
-                                    # Add a small delay between commands
-                                    time.sleep(0.2)
-                            
                         except Exception as e:
-                            print(f"Error getting AI response: {e}")
+                            print(f"Error in AI processing loop: {str(e)}")
+                            print("Stack trace:")
+                            traceback.print_exc()
                     else:
                         debug_mode, unlimited_fps_mode, quit_requested = (
                             process_agent_command(
@@ -379,7 +400,7 @@ def run_emulator_loop(pyboy, rom_path, debug_mode, unlimited_fps_mode, agent_mod
                 # Take a screenshot every second in debug mode to help the agent
                 if pyboy.frame_count > 0:
                     screenshot_path = "current_frame.png"
-                    pyboy.screen.image.save(screenshot_path)
+                    pyboy.screen_image().save(screenshot_path)
 
 
 def main(
