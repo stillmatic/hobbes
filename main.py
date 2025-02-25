@@ -164,7 +164,7 @@ def run_emulator_loop(pyboy, rom_path, debug_mode, unlimited_fps_mode, agent_mod
                     elif event.key == pygame.K_o:
                         timestamp = time.strftime("%Y%m%d-%H%M%S")
                         screenshot_path = f"screenshot-{timestamp}.png"
-                        pyboy.screen_image().save(screenshot_path)
+                        pyboy.screen.image.save(screenshot_path)
                         print(f"Screenshot saved as {screenshot_path}")
 
                     # Save state
@@ -285,9 +285,9 @@ def run_emulator_loop(pyboy, rom_path, debug_mode, unlimited_fps_mode, agent_mod
                     # Special command to trigger AI
                     if command.lower() == "ai":
                         # Capture current screen
-                        screenshot = pyboy.screen_image()
+                        screenshot = pyboy.screen.image
                         buffered = BytesIO()
-                        screenshot.save(buffered, format="JPEG")
+                        screenshot.save(buffered, format="PNG")
                         base64_image = base64.b64encode(buffered.getvalue()).decode("utf-8")
                         
                         # Add user message with screenshot to conversation history
@@ -298,7 +298,7 @@ def run_emulator_loop(pyboy, rom_path, debug_mode, unlimited_fps_mode, agent_mod
                         
                         conversation_history.append({
                             "type": "image_url",
-                            "image_url": {"url": f"data:image/jpeg;base64,{base64_image}", "detail": "low"},
+                            "image_url": {"url": f"data:image/png;base64,{base64_image}", "detail": "low"},
                         })
                         
                         # Get AI response
@@ -379,7 +379,7 @@ def run_emulator_loop(pyboy, rom_path, debug_mode, unlimited_fps_mode, agent_mod
                 # Take a screenshot every second in debug mode to help the agent
                 if pyboy.frame_count > 0:
                     screenshot_path = "current_frame.png"
-                    pyboy.screen_image().save(screenshot_path)
+                    pyboy.screen.image.save(screenshot_path)
 
 
 def main(
