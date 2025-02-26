@@ -148,7 +148,8 @@ def get_ai_response(pyboy, conversation_history):
                 "HTTP-Referer": "twitch.tv/memberoftechstaff", 
                 "X-Title": "Member of Technical Staff",
             },
-            model="openai/gpt-4o",
+            # model="openai/gpt-4o",
+            model="google/gemini-2.0-flash-001",
             messages=conversation_history,
         )
         
@@ -189,7 +190,7 @@ def get_ai_response(pyboy, conversation_history):
         return conversation_history, []
 
 
-def run_emulator_loop(pyboy, rom_path, debug_mode, unlimited_fps_mode, agent_mode=True):
+def run_emulator_loop(pyboy, rom_path, debug_mode, unlimited_fps_mode, agent_mode=True, headless=False):
     """Run the main emulator game loop."""
     if not agent_mode:
         # Original human-controlled loop
@@ -295,9 +296,10 @@ def run_emulator_loop(pyboy, rom_path, debug_mode, unlimited_fps_mode, agent_mod
                 except EOFError:
                     break
 
-        # Start input thread
-        input_thread = threading.Thread(target=input_thread_func, daemon=True)
-        input_thread.start()
+        # Start input thread (only if not in headless mode)
+        if not headless:
+            input_thread = threading.Thread(target=input_thread_func, daemon=True)
+            input_thread.start()
 
         running = True
         ai_turn_counter = 0  # Counter to control when to ask the AI
@@ -352,43 +354,70 @@ def run_emulator_loop(pyboy, rom_path, debug_mode, unlimited_fps_mode, agent_mod
         ]
         
         while running:
-            # Process any commands in the queue
-            try:
-                while not command_queue.empty():
-                    command = command_queue.get_nowait()
+            # In headless mode, automatically trigger AI every few seconds
+            if headless and (ai_turn_counter == 0 or ai_turn_counter >= 60):  # Every ~1 second (60 frames)
+                try:
+                    print("\nAutomatically triggering AI in headless mode...")
+                    # Get AI response and execute commands
+                    conversation_history, commands = get_ai_response(pyboy, conversation_history)
                     
-                    # Special command to trigger AI
-                    if command.lower() == "ai":
-                        try:
-                            # Get AI response and execute commands
-                            conversation_history, commands = get_ai_response(pyboy, conversation_history)
-                            
-                            # Execute each command
-                            for cmd in commands:
-                                debug_mode, unlimited_fps_mode, quit_requested = process_agent_command(
-                                    cmd, pyboy, rom_path, debug_mode, unlimited_fps_mode
-                                )
-                                if quit_requested:
-                                    running = False
-                                    break
-                                # Add a small delay between commands
-                                time.sleep(0.2)
-                                
-                        except Exception as e:
-                            print(f"Error in AI processing loop: {str(e)}")
-                            print("Stack trace:")
-                            traceback.print_exc()
-                    else:
-                        debug_mode, unlimited_fps_mode, quit_requested = (
-                            process_agent_command(
-                                command, pyboy, rom_path, debug_mode, unlimited_fps_mode
-                            )
+                    # Execute each command
+                    for cmd in commands:
+                        debug_mode, unlimited_fps_mode, quit_requested = process_agent_command(
+                            cmd, pyboy, rom_path, debug_mode, unlimited_fps_mode
                         )
                         if quit_requested:
                             running = False
                             break
-            except queue.Empty:
-                pass
+                        # Add a small delay between commands
+                        time.sleep(0.2)
+                    
+                    # Reset counter
+                    ai_turn_counter = 0
+                except Exception as e:
+                    print(f"Error in AI processing loop: {str(e)}")
+                    print("Stack trace:")
+                    traceback.print_exc()
+                    ai_turn_counter = 0
+            
+            # Process any commands in the queue (for non-headless mode)
+            if not headless:
+                try:
+                    while not command_queue.empty():
+                        command = command_queue.get_nowait()
+                        
+                        # Special command to trigger AI
+                        if command.lower() == "ai":
+                            try:
+                                # Get AI response and execute commands
+                                conversation_history, commands = get_ai_response(pyboy, conversation_history)
+                                
+                                # Execute each command
+                                for cmd in commands:
+                                    debug_mode, unlimited_fps_mode, quit_requested = process_agent_command(
+                                        cmd, pyboy, rom_path, debug_mode, unlimited_fps_mode
+                                    )
+                                    if quit_requested:
+                                        running = False
+                                        break
+                                    # Add a small delay between commands
+                                    time.sleep(0.2)
+                                    
+                            except Exception as e:
+                                print(f"Error in AI processing loop: {str(e)}")
+                                print("Stack trace:")
+                                traceback.print_exc()
+                        else:
+                            debug_mode, unlimited_fps_mode, quit_requested = (
+                                process_agent_command(
+                                    command, pyboy, rom_path, debug_mode, unlimited_fps_mode
+                                )
+                            )
+                            if quit_requested:
+                                running = False
+                                break
+                except queue.Empty:
+                    pass
 
             # Process window events (for closing the window)
             for event in pygame.event.get():
@@ -397,6 +426,10 @@ def run_emulator_loop(pyboy, rom_path, debug_mode, unlimited_fps_mode, agent_mod
 
             # Tick the emulator (advance one frame)
             running = running and pyboy.tick()
+            
+            # Increment counter in headless mode
+            if headless:
+                ai_turn_counter += 1
 
 
 def main(
@@ -406,6 +439,7 @@ def main(
     debug=False,
     unlimited_fps=False,
     agent_mode=True,
+    headless=False,
 ):
     # Setup the emulator
     pyboy, debug_mode, unlimited_fps_mode = setup_emulator(
@@ -414,7 +448,7 @@ def main(
 
     try:
         # Run the main game loop
-        run_emulator_loop(pyboy, rom_path, debug_mode, unlimited_fps_mode, agent_mode)
+        run_emulator_loop(pyboy, rom_path, debug_mode, unlimited_fps_mode, agent_mode, headless)
     finally:
         # Clean up
         pyboy.stop()
