@@ -18,7 +18,6 @@ from rich.table import Table
 from rich.layout import Layout
 from rich.live import Live
 from rich.text import Text
-from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 # Initialize Rich console
 console = Console()
@@ -108,7 +107,7 @@ def process_agent_command(command, pyboy, rom_path, debug_mode, unlimited_fps_mo
     # Handle button presses
     if main_command in button_commands:
         button_name = button_commands[main_command]
-        pyboy.button(button_name, delay=5)
+        pyboy.button_press(button_name)
         console.print(f"[green]Button pressed and released: {button_name}")
 
     elif main_command == "wait" and len(parts) > 1:
@@ -129,7 +128,9 @@ def process_agent_command(command, pyboy, rom_path, debug_mode, unlimited_fps_mo
         for cmd in sequence:
             if cmd in button_commands:
                 button_name = button_commands[cmd]
-                pyboy.button(button_name, delay=5)
+                pyboy.button(button_name, "press")
+                time.sleep(0.1)
+                pyboy.button(button_name, "release")
                 console.print(f"[green]Button pressed and released: {button_name}")
                 time.sleep(0.5)  # Delay between commands
             else:
@@ -347,6 +348,10 @@ def run_emulator_loop(pyboy, rom_path, debug_mode, unlimited_fps_mode, agent_mod
         # Create a deque to store recent commands (max size 10)
         command_history = deque(maxlen=10)
         
+        # Store the most recent AI thinking and commands
+        most_recent_ai_thinking = ""
+        most_recent_ai_commands = []
+        
         # Flag to track if we're waiting for AI response
         waiting_for_ai = False
 
@@ -369,8 +374,22 @@ def run_emulator_loop(pyboy, rom_path, debug_mode, unlimited_fps_mode, agent_mod
         def ai_response_callback(updated_history, commands):
             nonlocal waiting_for_ai
             nonlocal conversation_history
+            nonlocal most_recent_ai_thinking
+            nonlocal most_recent_ai_commands
             
             conversation_history = updated_history
+            
+            # Store the most recent AI response for display
+            if len(conversation_history) >= 2:
+                last_ai_response = conversation_history[-1]['content']
+                
+                # Extract thinking
+                thinking_match = re.search(r'<thinking>(.*?)</thinking>', last_ai_response, re.DOTALL)
+                if thinking_match:
+                    most_recent_ai_thinking = thinking_match.group(1).strip()
+                
+                # Store commands
+                most_recent_ai_commands = commands
             
             # Put commands in the queue to be executed
             for cmd in commands:
@@ -435,13 +454,20 @@ def run_emulator_loop(pyboy, rom_path, debug_mode, unlimited_fps_mode, agent_mod
         layout = Layout()
         layout.split(
             Layout(name="header", size=3),
-            Layout(name="main", size=20),  # Increased size to accommodate command history
+            Layout(name="main"),
             Layout(name="footer", size=3)
+        )
+        
+        # Split the main section to accommodate AI thinking and command history
+        layout["main"].split_row(
+            Layout(name="command_history", ratio=1),
+            Layout(name="ai_thinking", ratio=1)
         )
         
         # Set initial content
         layout["header"].update(Panel("[bold green]Pokemon Blue - AI Emulator", style="green"))
-        layout["main"].update(Panel("Game running...", title="Status"))
+        layout["command_history"].update(Panel("Game running...", title="Command History"))
+        layout["ai_thinking"].update(Panel("No AI thinking yet", title="AI Thinking"))
         layout["footer"].update(Panel("[bold cyan]Enter 'ai' to trigger AI move or enter commands directly", style="cyan"))
         
         # Add a spinner for when waiting for AI
@@ -458,11 +484,23 @@ def run_emulator_loop(pyboy, rom_path, debug_mode, unlimited_fps_mode, agent_mod
                             title="AI Status", 
                             border_style="yellow"
                         )
-                    layout["main"].update(ai_spinner)
+                    layout["command_history"].update(ai_spinner)
+                    
+                    # Keep showing previous AI thinking if available
+                    if most_recent_ai_thinking:
+                        ai_thinking_panel = Panel(
+                            Text(most_recent_ai_thinking, style="blue", overflow="fold"),
+                            title="Last AI Thinking",
+                            border_style="blue"
+                        )
+                        layout["ai_thinking"].update(ai_thinking_panel)
+                    else:
+                        layout["ai_thinking"].update(Panel("No AI thinking yet", title="AI Thinking"))
                 else:
                     ai_spinner = None
-                    # Show normal status with command history
-                    status_text = f"[bold green]Game running\n"
+                    
+                    # Show command history
+                    status_text = f"[bold green]Game Status:[/bold green]\n"
                     status_text += f"Debug: {'ON' if debug_mode else 'OFF'}\n"
                     status_text += f"Unlimited FPS: {'ON' if unlimited_fps_mode else 'OFF'}\n\n"
                     
@@ -476,7 +514,26 @@ def run_emulator_loop(pyboy, rom_path, debug_mode, unlimited_fps_mode, agent_mod
                     else:
                         status_text += "[italic]No commands executed yet[/italic]\n"
                         
-                    layout["main"].update(Panel(status_text, title="Status"))
+                    # Display last AI commands if available
+                    if most_recent_ai_commands:
+                        status_text += "\n[bold magenta]Last AI Commands:[/bold magenta]\n"
+                        for i, cmd in enumerate(most_recent_ai_commands, 1):
+                            status_text += f"{i}. [magenta]{cmd}[/magenta]\n"
+                    
+                    layout["command_history"].update(Panel(status_text, title="Command History"))
+                    
+                    # Show AI thinking
+                    if most_recent_ai_thinking:
+                        # Truncate thinking if too long for display
+                        ai_thinking_text = most_recent_ai_thinking
+                        ai_thinking_panel = Panel(
+                            Text(ai_thinking_text, style="blue", overflow="fold"),
+                            title="Last AI Thinking",
+                            border_style="blue"
+                        )
+                        layout["ai_thinking"].update(ai_thinking_panel)
+                    else:
+                        layout["ai_thinking"].update(Panel("No AI thinking yet", title="AI Thinking"))
                 
                 # In headless mode, automatically trigger AI every few seconds if not already waiting
                 if headless and not waiting_for_ai and (ai_turn_counter == 0 or ai_turn_counter >= 120):  # Every ~2 seconds (120 frames)
