@@ -108,7 +108,7 @@ def process_agent_command(command, pyboy, rom_path, debug_mode, unlimited_fps_mo
     # Handle button presses
     if main_command in button_commands:
         button_name = button_commands[main_command]
-        pyboy.button_press(button_name)
+        pyboy.button(button_name, delay=5)
         console.print(f"[green]Button pressed and released: {button_name}")
 
     elif main_command == "wait" and len(parts) > 1:
@@ -129,9 +129,7 @@ def process_agent_command(command, pyboy, rom_path, debug_mode, unlimited_fps_mo
         for cmd in sequence:
             if cmd in button_commands:
                 button_name = button_commands[cmd]
-                pyboy.button(button_name, "press")
-                time.sleep(0.1)
-                pyboy.button(button_name, "release")
+                pyboy.button(button_name, delay=5)
                 console.print(f"[green]Button pressed and released: {button_name}")
                 time.sleep(0.5)  # Delay between commands
             else:
