@@ -87,10 +87,19 @@ def process_agent_command(command, pyboy, rom_path, debug_mode, unlimited_fps_mo
     # Handle button presses
     if main_command in button_commands:
         button_name = button_commands[main_command]
-        pyboy.button(button_name, "press")
-        time.sleep(0.1)  # Hold for a short time
-        pyboy.button(button_name, "release")
+        pyboy.button_press(button_name)
         print(f"Button pressed and released: {button_name}")
+
+    elif main_command == "wait" and len(parts) > 1:
+        try:
+            seconds = float(parts[1])
+            frames = int(seconds * 60)  # 60 frames per second
+            print(f"Waiting for {seconds} seconds ({frames} frames)...")
+            for _ in range(frames):
+                pyboy.tick()
+            print("Wait completed")
+        except ValueError:
+            print(f"Invalid wait duration: {parts[1]}")
 
     elif main_command == "sequence" and len(parts) > 1:
         # Execute a sequence of commands with delay between them
@@ -118,11 +127,9 @@ def get_ai_response(pyboy, conversation_history):
     Get AI response for the current game state.
     Returns updated conversation history and any commands to execute.
     """
-    print("Getting AI response")   
     try:
         # Capture current screen
         screenshot = pyboy.screen.image
-        print("Screenshot captured")
         with tempfile.NamedTemporaryFile(suffix=".png") as temp_file:
             screenshot.save(temp_file.name)
             base64_image = base64.b64encode(open(temp_file.name, "rb").read()).decode("utf-8")
@@ -135,7 +142,6 @@ def get_ai_response(pyboy, conversation_history):
                 {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{base64_image}", "detail": "low"}},
             ]
         })
-        print("Conversation history updated")
         # Get AI response
         completion = client.chat.completions.create(
             extra_headers={
@@ -146,7 +152,6 @@ def get_ai_response(pyboy, conversation_history):
             messages=conversation_history,
         )
         
-        print(completion)
         # Parse AI response
         ai_response = completion.choices[0].message.content
         
@@ -278,10 +283,6 @@ def run_emulator_loop(pyboy, rom_path, debug_mode, unlimited_fps_mode, agent_mod
 
             # Tick the emulator (advance one frame)
             running = pyboy.tick()
-
-            # Display debug info if enabled
-            if debug_mode and pyboy.frame_count % 60 == 0:  # Update about once a second
-                print(f"Frame count: {pyboy.frame_count}, FPS: {pyboy.fps}")
     else:
         # Agent-controlled loop
         command_queue = queue.Queue()
@@ -312,7 +313,7 @@ def run_emulator_loop(pyboy, rom_path, debug_mode, unlimited_fps_mode, agent_mod
                 up, down, left, right: D-pad directions
                 a, b: A and B buttons
                 start, select: Start and Select buttons
-
+                wait [seconds]: Wait for the specified number of seconds.
                 You can also execute a sequence of commands with 0.5s delay between them.            
                             
                 Return your response in the following format:
@@ -343,6 +344,7 @@ def run_emulator_loop(pyboy, rom_path, debug_mode, unlimited_fps_mode, agent_mod
                 a
                 right 
                 right
+                wait 1
                 a
                 </commands>
                 """
@@ -395,14 +397,6 @@ def run_emulator_loop(pyboy, rom_path, debug_mode, unlimited_fps_mode, agent_mod
 
             # Tick the emulator (advance one frame)
             running = running and pyboy.tick()
-
-            # Display debug info if enabled
-            if debug_mode and pyboy.frame_count % 60 == 0:  # Update about once a second
-                print(f"Frame count: {pyboy.frame_count}, FPS: {pyboy.fps}")
-                # Take a screenshot every second in debug mode to help the agent
-                if pyboy.frame_count > 0:
-                    screenshot_path = "current_frame.png"
-                    pyboy.screen.image.save(screenshot_path)
 
 
 def main(
