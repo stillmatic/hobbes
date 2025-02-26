@@ -12,4 +12,5 @@ dependencies = [
     "pygame>=2.6.1",
     "python-dotenv>=1.0.1",
     "rich>=13.9.4",
+    "structlog>=25.1.0",
 ]
