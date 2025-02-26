@@ -80,7 +80,11 @@ You must follow the format exactly. Begin your response with <thinking>.
 
 """,
 )
-def run_emulator_loop(pyboy, rom_path, debug_mode, unlimited_fps_mode, agent_mode=True, headless=False):
+
+
+def run_emulator_loop(
+    pyboy, rom_path, debug_mode, unlimited_fps_mode, agent_mode=True, headless=False
+):
     """Run the main emulator game loop with the refactored architecture."""
     # Initialize controller with model and view
     controller = GameController(
@@ -88,16 +92,17 @@ def run_emulator_loop(pyboy, rom_path, debug_mode, unlimited_fps_mode, agent_mod
         rom_path=rom_path,
         system_prompt=SYSTEM_PROMPT,
         client=client,
-        headless=headless
+        headless=headless,
     )
-    
+
     # Set initial state
     controller.model.debug_mode = debug_mode
     controller.model.unlimited_fps_mode = unlimited_fps_mode
-    
+
     # Run the game loop
     controller.run()
-    
+
+
 def main(
     rom_path="roms/pokemon_blue.gb",
     speed=1,

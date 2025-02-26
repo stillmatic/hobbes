@@ -8,6 +8,7 @@ import traceback
 from collections import deque
 from utils import logger
 
+
 class GameModel:
     def __init__(self, system_prompt, client):
         self.conversation_history = [
@@ -33,9 +34,7 @@ class GameModel:
         screenshot = pyboy.screen.image
         with tempfile.NamedTemporaryFile(suffix=".png") as temp_file:
             screenshot.save(temp_file.name)
-            return base64.b64encode(
-                open(temp_file.name, "rb").read()
-            ).decode("utf-8")
+            return base64.b64encode(open(temp_file.name, "rb").read()).decode("utf-8")
 
     def add_user_message(self, base64_image):
         """Add a user message with screenshot to conversation history."""
@@ -100,6 +99,7 @@ class GameModel:
         Get AI response for the current game state asynchronously.
         Uses a thread to avoid blocking the main game loop.
         """
+
         def ai_thread_func():
             try:
                 # Capture current screen
@@ -120,9 +120,11 @@ class GameModel:
 
                 # Extract thinking and commands
                 thinking, commands = self.parse_ai_response(ai_response)
-                
+
                 # Store for display purposes
-                self.most_recent_ai_thinking = thinking if thinking else self.most_recent_ai_thinking
+                self.most_recent_ai_thinking = (
+                    thinking if thinking else self.most_recent_ai_thinking
+                )
                 self.most_recent_ai_commands = commands
 
                 # Queue commands for execution
@@ -151,20 +153,20 @@ class GameModel:
         """Process a game command from either user or AI."""
         # This would contain the logic from your existing process_agent_command function
         # For now, I'll just add a stub returning the three values that your original function returned
-        
+
         # Add command to history
         self.command_history.append(command)
-        
+
         # Placeholder for the actual command processing logic
         # In the actual implementation, this would execute the command on pyboy
         # and return updated debug_mode, unlimited_fps_mode, and quit_requested
-        
+
         quit_requested = command.lower() == "quit"
-        
+
         # Update debug_mode and unlimited_fps_mode based on commands
         if command.lower() == "debug":
             self.debug_mode = not self.debug_mode
         elif command.lower() == "unlimited_fps":
             self.unlimited_fps_mode = not self.unlimited_fps_mode
-        
+
         return self.debug_mode, self.unlimited_fps_mode, quit_requested

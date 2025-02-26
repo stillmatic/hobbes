@@ -26,6 +26,7 @@ structlog.configure(
 
 logger = structlog.get_logger()
 
+
 def setup_emulator(rom_path, speed, skip_frames, debug, unlimited_fps):
     """Initialize and configure the PyBoy emulator."""
     # Initialize PyBoy
@@ -46,6 +47,7 @@ def setup_emulator(rom_path, speed, skip_frames, debug, unlimited_fps):
     pygame.init()
 
     return pyboy, debug_mode, unlimited_fps_mode
+
 
 def process_agent_command(
     command, pyboy, rom_path, debug_mode, unlimited_fps_mode, command_history=None
