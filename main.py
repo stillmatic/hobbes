@@ -33,7 +33,7 @@ client = OpenAI(
 def setup_emulator(rom_path, speed, skip_frames, debug, unlimited_fps):
     """Initialize and configure the PyBoy emulator."""
     # Initialize PyBoy
-    pyboy = PyBoy(rom_path)
+    pyboy = PyBoy(rom_path, cgb=True)
 
     # Set options
     pyboy.set_emulation_speed(speed)  # 1 is normal speed, 0 is as fast as possible
@@ -107,7 +107,7 @@ def process_agent_command(command, pyboy, rom_path, debug_mode, unlimited_fps_mo
     # Handle button presses
     if main_command in button_commands:
         button_name = button_commands[main_command]
-        pyboy.button_press(button_name)
+        pyboy.button(button_name, 5)
         console.print(f"[green]Button pressed and released: {button_name}")
 
     elif main_command == "wait" and len(parts) > 1:
@@ -128,9 +128,7 @@ def process_agent_command(command, pyboy, rom_path, debug_mode, unlimited_fps_mo
         for cmd in sequence:
             if cmd in button_commands:
                 button_name = button_commands[cmd]
-                pyboy.button(button_name, "press")
-                time.sleep(0.1)
-                pyboy.button(button_name, "release")
+                pyboy.button(button_name, 5)
                 console.print(f"[green]Button pressed and released: {button_name}")
                 time.sleep(0.5)  # Delay between commands
             else:
@@ -392,8 +390,13 @@ def run_emulator_loop(pyboy, rom_path, debug_mode, unlimited_fps_mode, agent_mod
                 most_recent_ai_commands = commands
             
             # Put commands in the queue to be executed
-            for cmd in commands:
-                ai_command_queue.put(cmd)
+            if len(commands) > 1:
+                # Multiple commands - combine into a sequence
+                sequence_cmd = f"sequence {' '.join(commands)}"
+                ai_command_queue.put(sequence_cmd)
+            elif commands:
+                # Single command - put directly in queue
+                ai_command_queue.put(commands[0])
             
             # No longer waiting for AI
             waiting_for_ai = False
