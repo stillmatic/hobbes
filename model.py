@@ -4,6 +4,7 @@ import json
 import tempfile
 import threading
 import queue
+import time
 import traceback
 from collections import deque
 
@@ -31,6 +32,53 @@ You have a few tools at your disposal:
 - `input`: You can interact with the game, by pressing buttons on the Game Boy. You may use D-pad directions (up, down, left, right), A and B buttons, Start and Select buttons.
 - `bro`: You can ask your big brother for help. Your big brother is a very smart AI that doesn't have access to the game or images, but can reason over your notes and provide you with advice or a plan.
 
+# Example 1: Using the 'notes' tool to add information to the knowledge base
+{
+  "role": "assistant",
+  "content": "I can see we're at the beginning of the game. Let me make a note of our starter Pokémon.",
+  "tool_calls": [
+    {
+      "id": "call_abc123",
+      "type": "function",
+      "function": {
+        "name": "notes",
+        "arguments": "{\"action\":\"add\",\"note_name\":\"My Team\",\"content\":\"Starter: Bulbasaur, Level 5\\nType: Grass/Poison\\nMoves: Tackle, Growl\"}"
+      }
+    }
+  ]
+}
+
+# Example 2: Using the 'input' tool to press buttons
+{
+  "role": "assistant",
+  "content": "I need to move our character to the Pokémon Center to heal.",
+  "tool_calls": [
+    {
+      "id": "call_def456",
+      "type": "function",
+      "function": {
+        "name": "input",
+        "arguments": "{\"commands\":[\"up\", \"up\", \"up\", \"right\", \"right\", \"a\"]}"
+      }
+    }
+  ]
+}
+
+# Example 3: Using the 'bro' tool to ask for advice
+{
+  "role": "assistant",
+  "content": "I'm not sure which Pokémon would be best against the first gym. Let me ask for advice.",
+  "tool_calls": [
+    {
+      "id": "call_ghi789",
+      "type": "function",
+      "function": {
+        "name": "bro",
+        "arguments": "{\"question\":\"What Pokémon types are effective against Brock's Rock-type Pokémon in the first gym?\"}"
+      }
+    }
+  ]
+}
 ---
 
 You're enthusiastic and enjoy the adventure! Share your excitement when you catch new Pokémon or win battles.
@@ -53,16 +101,7 @@ When deciding your next action, consider:
 Balance immediate needs (healing Pokémon, winning current battle) with long-term goals (completing the game, evolving Pokémon).
 """
 
-button_map = {
-    "up": pygame.K_UP,
-    "down": pygame.K_DOWN,
-    "left": pygame.K_LEFT,
-    "right": pygame.K_RIGHT,
-    "a": pygame.K_a,
-    "b": pygame.K_b,
-    "start": pygame.K_RETURN,
-    "select": pygame.K_BACKSPACE,
-}
+button_map = ["up", "down", "left", "right", "a", "b", "start", "select"]
 
 class GameModel:
     def __init__(self, client):
@@ -115,8 +154,13 @@ class GameModel:
             }
         )
 
-    def call_ai_api(self):
+    def call_ai_api(self, remind_format=False):
         """Call the AI API with the current conversation history."""
+
+        conversation_history = self.conversation_history
+        if remind_format:
+            conversation_history[-1]["content"][0]["text"] += "Remember to format your response using the tool calling functionality. You MUST use the tool calling functionality."
+
         return self.client.chat.completions.create(
             extra_headers={
                 "HTTP-Referer": "twitch.tv/memberoftechstaff",
@@ -210,20 +254,12 @@ class GameModel:
         logger.info("AI response", content=message.content)
 
         thinking = message.content
-        # Extract thinking from content if it exists
-        # thinking = ""
-        # if message.content:
-        #     thinking_match = re.search(
-        #         r"<thinking>(.*?)</thinking>", message.content, re.DOTALL
-        #     )
-        #     if thinking_match:
-        #         thinking = thinking_match.group(1).strip()
-
-        # Check for tool calls
         tool_calls = []
         if hasattr(message, "tool_calls") and message.tool_calls:
             tool_calls = message.tool_calls
             logger.info("Parsed tools", tool_calls=tool_calls)
+        else:
+            raise ValueError("No tool calls found in AI response")
 
         return thinking, tool_calls
 
@@ -288,8 +324,8 @@ class GameModel:
                     logger.info("Pressing button", button=btn)
                     pyboy.button(btn, 5)
                     executed_commands.append(btn)
-                # Wait 12 ticks or 0.2 seconds
-                pyboy.tick(12)
+                # Wait 20 ticks or 1/3 seconds
+                pyboy.tick(20)
 
             result = {"status": "Commands executed", "executed": executed_commands}
 
@@ -339,7 +375,21 @@ class GameModel:
                 completion = self.call_ai_api()
 
                 # Parse AI response
-                thinking, tool_calls = self.parse_ai_response(completion)
+                tries = 0
+                while tries < 3:
+                    try:
+                        thinking, tool_calls = self.parse_ai_response(completion)
+                        break
+                    except ValueError as e:
+                        logger.error("No tool calls found in AI response", error=str(e))
+                        # retry the call
+                        completion = self.call_ai_api(remind_format=True)
+                        thinking, tool_calls = self.parse_ai_response(completion)
+                    except Exception as e:
+                        logger.error("Error parsing AI response", error=str(e))
+                        logger.error("Stack trace", trace=traceback.format_exc())
+                        return
+                    tries += 1
 
                 # Store thinking for display purposes
                 self.most_recent_ai_thinking = (
@@ -364,7 +414,7 @@ class GameModel:
                         )
 
                         logger.info("Tool result", tool_result=tool_result)
-
+                    
                     # # Step 4: Get final AI response with tool results
                     # final_completion = self.call_ai_api()
 
@@ -388,6 +438,8 @@ class GameModel:
                     #     self.ai_turn_counter += 1
                     #     self.get_ai_response_async(pyboy, callback)
                     #     return
+
+                time.sleep(0.2)
 
                 # Call the callback with the results
                 callback(
