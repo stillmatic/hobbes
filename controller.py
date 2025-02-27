@@ -10,13 +10,13 @@ from view import GameView
 
 
 class GameController:
-    def __init__(self, pyboy, rom_path, system_prompt, client, headless=False):
+    def __init__(self, pyboy, rom_path, client, headless=False):
         self.pyboy = pyboy
         self.rom_path = rom_path
         self.headless = headless
 
         # Initialize model and view
-        self.model = GameModel(system_prompt, client)
+        self.model = GameModel(client)
         self.view = GameView()
 
         # Input thread (for non-headless mode)
@@ -76,10 +76,8 @@ class GameController:
                         self.view.console.print(traceback.format_exc(), style="red")
                         self.model.waiting_for_ai = False
                 else:
-                    debug_mode, unlimited_fps_mode, quit_requested = (
-                        self.model.process_agent_command(
-                            command, self.pyboy, self.rom_path
-                        )
+                    _, _, quit_requested = self.model.process_agent_command(
+                        command, self.pyboy
                     )
                     if quit_requested:
                         self.model.running = False
@@ -95,8 +93,8 @@ class GameController:
             while not self.model.ai_command_queue.empty():
                 cmd = self.model.ai_command_queue.get_nowait()
                 self.view.console.print(f"[cyan]Executing AI command: {cmd}")
-                debug_mode, unlimited_fps_mode, quit_requested = (
-                    self.model.process_agent_command(cmd, self.pyboy, self.rom_path)
+                _, _, quit_requested = (
+                    self.model.process_agent_command(cmd, self.pyboy)
                 )
                 if quit_requested:
                     self.model.running = False
@@ -111,7 +109,7 @@ class GameController:
         if (
             self.headless
             and not self.model.waiting_for_ai
-            and (self.model.ai_turn_counter == 0 or self.model.ai_turn_counter >= 120)
+            and (self.model.ai_turn_counter == 0 or self.model.ai_turn_counter >= 180)
         ):
             try:
                 self.view.console.print(

@@ -1,26 +1,14 @@
-import base64
 import os
-import queue
-import re
-import tempfile
-import threading
-import time
 import traceback
-from collections import deque
 
 import fire
-import pygame
 from dotenv import load_dotenv
 from openai import OpenAI
 from rich.console import Console
-from rich.layout import Layout
-from rich.live import Live
 from rich.panel import Panel
-from rich.table import Table
-from rich.text import Text
 
 from controller import GameController
-from utils import logger, process_agent_command, setup_emulator
+from utils import logger, setup_emulator
 
 # Initialize Rich console
 console = Console()
@@ -29,56 +17,6 @@ load_dotenv()
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=os.getenv("OPENROUTER_API_KEY"),
-)
-
-SYSTEM_PROMPT = (
-    """You are Hobbes, a very intelligent but fun AI agent. You are currently playing Pokemon Blue on a Game Boy emulator. 
-
-You are given a screenshot of the current state of the game and a description of the situation. You need to decide what to do next.
-
-You can control the game with the following commands:
-up, down, left, right: D-pad directions
-a, b: A and B buttons
-start, select: Start and Select buttons
-wait [seconds]: Wait for the specified number of seconds.
-
-You can also execute a sequence of commands with 0.5s delay between them.            
-            
-Return your response in the following format:
-
-```
-<thinking>
-Your thoughts on the current state of the game and what to do next.
-</thinking>
-<commands>
-The commands you want to execute. Put each command on a new line.
-</commands>
-```
-
-Example:
-<thinking>
-I need to move two tiles up, and then make my next move.
-</thinking>
-<commands>
-up
-up
-</commands>
-
-Example 2:
-<thinking>
-[omitted for brevity]
-</thinking>
-<commands>
-a
-right 
-right
-wait 1
-a
-</commands>
-
-You must follow the format exactly. Begin your response with <thinking>.
-
-""",
 )
 
 
@@ -90,7 +28,6 @@ def run_emulator_loop(
     controller = GameController(
         pyboy=pyboy,
         rom_path=rom_path,
-        system_prompt=SYSTEM_PROMPT,
         client=client,
         headless=headless,
     )
